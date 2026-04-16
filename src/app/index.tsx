@@ -1,1 +1,1 @@
-export { PatternsPage as default } from '@/pages/patterns';
+export { AlarmTimePage as default } from '@/pages/alarm-time';

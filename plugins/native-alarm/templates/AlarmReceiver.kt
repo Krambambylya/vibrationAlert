@@ -17,5 +17,8 @@ class AlarmReceiver : BroadcastReceiver() {
         putExtra("pattern", pattern)
       }
     ContextCompat.startForegroundService(context, serviceIntent)
+
+    // Schedule the next day's alarm (daily repeat) using persisted alarm state.
+    runCatching { AlarmScheduler.rescheduleAfterBoot(context) }
   }
 }

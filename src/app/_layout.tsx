@@ -1,12 +1,12 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { Stack } from 'expo-router';
 import React, { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 
-import { AppTabs } from '@/app/navigation';
 import { resyncAlarmSchedule } from '@/features/alarm-scheduler';
 import { AnimatedSplashOverlay } from '@/shared/ui';
 
-export default function TabLayout() {
+export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   useEffect(() => {
@@ -18,7 +18,9 @@ export default function TabLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
-      <AppTabs />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+      </Stack>
     </ThemeProvider>
   );
 }

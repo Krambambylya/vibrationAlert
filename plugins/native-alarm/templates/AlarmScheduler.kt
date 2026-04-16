@@ -135,7 +135,8 @@ object AlarmScheduler {
         set(Calendar.MINUTE, minute)
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
-        if (before(now)) {
+        // If target is not strictly in the future, schedule for the next day.
+        if (!after(now)) {
           add(Calendar.DAY_OF_YEAR, 1)
         }
       }
