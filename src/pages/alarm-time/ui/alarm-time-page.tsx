@@ -1,5 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import {
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
@@ -13,6 +24,7 @@ import {
 } from '@/features/alarm-scheduler';
 import { playPattern } from '@/features/pattern-playback';
 import { Spacing } from '@/shared/config';
+import { useTheme } from '@/shared/lib/hooks';
 import { ThemedText, ThemedView } from '@/shared/ui';
 
 function clampTime(value: string, max: number) {
@@ -28,11 +40,14 @@ function pad2(value: number) {
 }
 
 export function AlarmTimePage() {
+  const theme = useTheme();
   const [alarm, setAlarm] = useState<AlarmSettings | null>(null);
   const [patterns, setPatterns] = useState<VibrationPattern[]>([]);
   const [hourInput, setHourInput] = useState('07');
   const [minuteInput, setMinuteInput] = useState('00');
   const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const [iosPickerDraft, setIosPickerDraft] = useState<Date | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [isAlarmArmed, setIsAlarmArmed] = useState(false);
   const [lastSaved, setLastSaved] = useState<{
     enabled: boolean;
@@ -75,6 +90,12 @@ export function AlarmTimePage() {
   }, [hourInput, minuteInput]);
 
   const onTimePicked = (event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'ios') {
+      if (date) {
+        setIosPickerDraft(date);
+      }
+      return;
+    }
     if (Platform.OS === 'android') {
       setTimePickerOpen(false);
     }
@@ -84,6 +105,27 @@ export function AlarmTimePage() {
     setHourInput(pad2(date.getHours()));
     setMinuteInput(pad2(date.getMinutes()));
     setIsAlarmArmed(false);
+  };
+
+  const openTimePicker = () => {
+    if (Platform.OS === 'ios') {
+      setIosPickerDraft(timePickerValue);
+    }
+    setTimePickerOpen(true);
+  };
+
+  const closeIosPicker = () => {
+    setTimePickerOpen(false);
+    setIosPickerDraft(null);
+  };
+
+  const confirmIosPicker = () => {
+    if (iosPickerDraft) {
+      setHourInput(pad2(iosPickerDraft.getHours()));
+      setMinuteInput(pad2(iosPickerDraft.getMinutes()));
+      setIsAlarmArmed(false);
+    }
+    closeIosPicker();
   };
 
   const currentDraft = useMemo(() => {
@@ -113,7 +155,7 @@ export function AlarmTimePage() {
   }, [currentDraft, lastSaved]);
 
   const onSave = async () => {
-    if (!alarm || !selectedPattern) {
+    if (!alarm || !selectedPattern || isSaving) {
       return;
     }
 
@@ -127,6 +169,7 @@ export function AlarmTimePage() {
       vibrationPatternId: selectedPattern.id,
     };
 
+    setIsSaving(true);
     try {
       await cancelAlarm(alarm.id);
       let notificationId: string | undefined = undefined;
@@ -142,6 +185,11 @@ export function AlarmTimePage() {
         vibrationPatternId: nextAlarm.vibrationPatternId,
       });
       setIsAlarmArmed(Boolean(nextAlarm.enabled && notificationId));
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {
+        // Haptics may be unavailable on some devices/emulators.
+      }
       Alert.alert('Saved', 'Alarm has been updated.');
     } catch (error) {
       if (error instanceof ExactAlarmPermissionError) {
@@ -152,6 +200,8 @@ export function AlarmTimePage() {
         return;
       }
       Alert.alert('Error', (error as Error).message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -169,19 +219,27 @@ export function AlarmTimePage() {
         <ScrollView contentContainerStyle={styles.content}>
           <ThemedText type="subtitle">Alarm</ThemedText>
 
-          <ThemedView type="backgroundElement" style={styles.section}>
+          <ThemedView
+            type="background"
+            style={[styles.heroSection, { borderColor: theme.surfaceVariant, backgroundColor: theme.background }]}>
             <View style={styles.row}>
-              <ThemedText type="smallBold">Enabled</ThemedText>
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                Enabled
+              </ThemedText>
               <Switch
                 value={alarm.enabled}
-              onValueChange={(value) => {
-                setAlarm((prev) => (prev ? { ...prev, enabled: value } : prev));
-                setIsAlarmArmed(false);
-              }}
+                trackColor={{ false: theme.surfaceVariant, true: theme.primaryContainer }}
+                thumbColor={alarm.enabled ? theme.primary : theme.outline}
+                onValueChange={(value) => {
+                  setAlarm((prev) => (prev ? { ...prev, enabled: value } : prev));
+                  setIsAlarmArmed(false);
+                }}
               />
             </View>
 
-            <ThemedText type="small">Time</ThemedText>
+            <ThemedText type="caption" themeColor="textSecondary">
+              Time
+            </ThemedText>
             {Platform.OS === 'web' ? (
               <View style={styles.timeRow}>
                 <TextInput
@@ -192,7 +250,7 @@ export function AlarmTimePage() {
                   }}
                   keyboardType="number-pad"
                   maxLength={2}
-                  style={styles.timeInput}
+                  style={[styles.timeInput, { borderColor: theme.outline, color: theme.text, backgroundColor: theme.background }]}
                 />
                 <ThemedText type="subtitle">:</ThemedText>
                 <TextInput
@@ -203,61 +261,124 @@ export function AlarmTimePage() {
                   }}
                   keyboardType="number-pad"
                   maxLength={2}
-                  style={styles.timeInput}
+                  style={[styles.timeInput, { borderColor: theme.outline, color: theme.text, backgroundColor: theme.background }]}
                 />
               </View>
             ) : (
-              <Pressable onPress={() => setTimePickerOpen(true)} style={styles.timePickerPressable}>
-                <ThemedText type="title">{hourInput}:{minuteInput}</ThemedText>
+              <Pressable
+                onPress={openTimePicker}
+                style={[
+                  styles.timePickerPressable,
+                  { backgroundColor: theme.background, borderColor: theme.surfaceVariant },
+                ]}>
+                <ThemedText type="display">{hourInput}:{minuteInput}</ThemedText>
               </Pressable>
             )}
 
-            {Platform.OS !== 'web' && timePickerOpen ? (
+            <ThemedText type="caption" themeColor="textSecondary">
+              Repeats daily
+            </ThemedText>
+
+            {Platform.OS === 'android' && timePickerOpen ? (
               <DateTimePicker
                 value={timePickerValue}
                 mode="time"
                 is24Hour
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                display="default"
                 onChange={onTimePicked}
               />
             ) : null}
           </ThemedView>
 
-          <ThemedText type="smallBold">Patterns</ThemedText>
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            Patterns
+          </ThemedText>
           {sortedPatterns.map((pattern) => (
             <Pressable
               key={pattern.id}
               onPress={() => {
                 setAlarm((prev) => (prev ? { ...prev, vibrationPatternId: pattern.id } : prev));
                 setIsAlarmArmed(false);
+                Haptics.selectionAsync().catch(() => {
+                  // Haptics may be unavailable on some devices/emulators.
+                });
               }}
               style={styles.patternPress}>
               <ThemedView
-                type={alarm.vibrationPatternId === pattern.id ? 'backgroundSelected' : 'backgroundElement'}
+                type={alarm.vibrationPatternId === pattern.id ? 'primaryContainer' : 'background'}
                 style={styles.patternCard}>
                 <View style={styles.patternText}>
                   <ThemedText type="smallBold">{pattern.name}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="caption" themeColor="textSecondary">
                     {pattern.sequenceMs.join(', ')} ms
                   </ThemedText>
                 </View>
                 <Pressable onPress={() => playPattern(pattern)} hitSlop={12}>
-                  <ThemedText type="small">Preview</ThemedText>
+                  <ThemedText type="small" themeColor="primary">
+                    Preview
+                  </ThemedText>
                 </Pressable>
+                <View pointerEvents="none" style={styles.patternCheck}>
+                  <ThemedText
+                    type="smallBold"
+                    themeColor={alarm.vibrationPatternId === pattern.id ? 'onPrimaryContainer' : 'outline'}>
+                    {alarm.vibrationPatternId === pattern.id ? '●' : '○'}
+                  </ThemedText>
+                </View>
               </ThemedView>
             </Pressable>
           ))}
         </ScrollView>
 
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { backgroundColor: theme.background }]}>
+          <ThemedText type="caption" themeColor="textSecondary">
+            {!alarm.enabled ? 'Alarm disabled' : isAlarmArmed ? 'Alarm armed' : 'Save to arm alarm'}
+          </ThemedText>
           <Pressable
             onPress={onSave}
-            disabled={!isDirty}
-            style={[styles.saveButton, !isDirty && isAlarmArmed ? styles.saveButtonSaved : null]}>
-            <ThemedText type="smallBold">{!isDirty && isAlarmArmed ? 'Saved' : 'Save'}</ThemedText>
+            disabled={!isDirty || isSaving}
+            style={[
+              styles.saveButton,
+              { backgroundColor: theme.primary, borderColor: theme.primary },
+              !isDirty && isAlarmArmed
+                ? { backgroundColor: theme.primaryContainer, borderColor: theme.primaryContainer }
+                : null,
+              (!isDirty || isSaving) && !( !isDirty && isAlarmArmed) ? styles.saveButtonDisabled : null,
+            ]}>
+            <ThemedText type="label" themeColor={!isDirty && isAlarmArmed ? 'onPrimaryContainer' : 'onPrimary'}>
+              {isSaving ? 'Saving...' : !isDirty && isAlarmArmed ? 'Alarm armed' : 'Save'}
+            </ThemedText>
           </Pressable>
         </View>
       </View>
+
+      {Platform.OS === 'ios' ? (
+        <Modal visible={timePickerOpen} transparent animationType="slide" onRequestClose={closeIosPicker}>
+          <View style={styles.modalBackdrop}>
+            <ThemedView type="surfaceContainer" style={styles.modalSheet}>
+              <View style={styles.modalActions}>
+                <Pressable onPress={closeIosPicker} hitSlop={12}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Cancel
+                  </ThemedText>
+                </Pressable>
+                <Pressable onPress={confirmIosPicker} hitSlop={12}>
+                  <ThemedText type="smallBold" themeColor="primary">
+                    Done
+                  </ThemedText>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                value={iosPickerDraft ?? timePickerValue}
+                mode="time"
+                is24Hour
+                display="spinner"
+                onChange={onTimePicked}
+              />
+            </ThemedView>
+          </View>
+        </Modal>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -272,9 +393,10 @@ const styles = StyleSheet.create({
   content: {
     padding: Spacing.four,
     gap: Spacing.three,
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
-  section: {
+  heroSection: {
+    borderWidth: 1,
     borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.two,
@@ -302,7 +424,6 @@ const styles = StyleSheet.create({
   },
   timePickerPressable: {
     borderWidth: 1,
-    borderColor: '#5f5f5f',
     borderRadius: Spacing.two,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
@@ -315,11 +436,16 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
   },
   patternCard: {
+    borderWidth: 1,
     borderRadius: Spacing.three,
     padding: Spacing.three,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
+    gap: Spacing.two,
+  },
+  patternCheck: {
+    marginLeft: 'auto',
   },
   bottomBar: {
     position: 'absolute',
@@ -329,19 +455,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
     paddingBottom: Spacing.four,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    gap: Spacing.one,
   },
   saveButton: {
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
     borderWidth: 1,
-    borderColor: '#5f5f5f',
     alignSelf: 'stretch',
     alignItems: 'center',
   },
-  saveButtonSaved: {
-    backgroundColor: '#1f7a3f',
-    borderColor: '#1f7a3f',
+  saveButtonDisabled: {
+    opacity: 0.55,
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalSheet: {
+    borderTopLeftRadius: Spacing.four,
+    borderTopRightRadius: Spacing.four,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.four,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
 });
