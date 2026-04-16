@@ -16,6 +16,38 @@ export default function RootLayout() {
     });
   }, []);
 
+  useEffect(() => {
+    const globalEvents = globalThis as unknown as {
+      addEventListener?: (type: string, listener: (event: unknown) => void) => void;
+      removeEventListener?: (type: string, listener: (event: unknown) => void) => void;
+    };
+
+    const handleUnhandledRejection = (event: unknown) => {
+      const rejection = event as {
+        reason?: unknown;
+        preventDefault?: () => void;
+      };
+      const message =
+        rejection.reason instanceof Error
+          ? rejection.reason.message
+          : typeof rejection.reason === 'string'
+            ? rejection.reason
+            : '';
+
+      if (
+        message.includes("ExpoKeepAwake.activate") &&
+        message.toLowerCase().includes('current activity is no longer available')
+      ) {
+        rejection.preventDefault?.();
+      }
+    };
+
+    globalEvents.addEventListener?.('unhandledrejection', handleUnhandledRejection);
+    return () => {
+      globalEvents.removeEventListener?.('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <StatusBar

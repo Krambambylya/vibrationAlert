@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import type { VibrationPattern } from '@/entities/vibration-pattern';
 import { Spacing } from '@/shared/config';
-import { normalizeUserPatternSequence } from '@/shared/lib/vibration';
-import { ThemedText, ThemedView } from '@/shared/ui';
+import { formatDuration, normalizeUserPatternSequence } from '@/shared/lib/vibration';
+import { ThemedText, ThemedView, VibrationWaveDiagram } from '@/shared/ui';
 
 type PatternEditorSheetProps = {
   visible: boolean;
@@ -29,6 +29,8 @@ export function PatternEditorSheet({
 }: PatternEditorSheetProps) {
   const [name, setName] = useState('');
   const [sequence, setSequence] = useState('400, 200, 400');
+  const parsedSequence = useMemo(() => parseSequence(sequence), [sequence]);
+  const totalMs = useMemo(() => parsedSequence.reduce((sum, item) => sum + item, 0), [parsedSequence]);
 
   useEffect(() => {
     if (!initialPattern) {
@@ -41,14 +43,13 @@ export function PatternEditorSheet({
   }, [initialPattern]);
 
   const save = () => {
-    const parsed = parseSequence(sequence);
-    if (!name.trim() || parsed.length === 0 || parsed.length > 20) {
+    if (!name.trim() || parsedSequence.length === 0 || parsedSequence.length > 20) {
       return;
     }
     onSave({
       id: initialPattern?.id ?? `custom-${Date.now()}`,
       name: name.trim(),
-      sequenceMs: parsed,
+      sequenceMs: parsedSequence,
       isPreset: false,
     });
     onClose();
@@ -76,6 +77,18 @@ export function PatternEditorSheet({
             style={styles.input}
             placeholderTextColor="#7a7a7a"
           />
+
+          <ThemedView type="surfaceContainer" style={styles.diagramCard}>
+            <VibrationWaveDiagram sequenceMs={parsedSequence} height={86} showAxis showSegmentLabels />
+            <View style={styles.legendRow}>
+              <ThemedText type="caption" themeColor="textSecondary">
+                Vibrate + Pause
+              </ThemedText>
+              <ThemedText type="caption" themeColor="textSecondary">
+                Total: {formatDuration(totalMs)}
+              </ThemedText>
+            </View>
+          </ThemedView>
 
           <View style={styles.actions}>
             <Pressable onPress={onClose} style={styles.actionButton}>
@@ -110,6 +123,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.one,
     color: '#ffffff',
+  },
+  diagramCard: {
+    borderRadius: Spacing.two,
+    padding: Spacing.two,
+    gap: Spacing.one,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   actions: {
     marginTop: Spacing.two,

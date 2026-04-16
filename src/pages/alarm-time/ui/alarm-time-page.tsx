@@ -25,7 +25,7 @@ import {
 import { playPattern } from '@/features/pattern-playback';
 import { Spacing } from '@/shared/config';
 import { useTheme } from '@/shared/lib/hooks';
-import { ThemedText, ThemedView } from '@/shared/ui';
+import { ThemedText, ThemedView, VibrationWaveDiagram } from '@/shared/ui';
 
 function clampTime(value: string, max: number) {
   const numeric = Number(value.replace(/\D/g, ''));
@@ -312,6 +312,7 @@ export function AlarmTimePage() {
                   <ThemedText type="caption" themeColor="textSecondary">
                     {pattern.sequenceMs.join(', ')} ms
                   </ThemedText>
+                  <VibrationWaveDiagram sequenceMs={pattern.sequenceMs} height={30} />
                 </View>
                 <Pressable onPress={() => playPattern(pattern)} hitSlop={12}>
                   <ThemedText type="small" themeColor="primary">
@@ -328,6 +329,13 @@ export function AlarmTimePage() {
               </ThemedView>
             </Pressable>
           ))}
+
+          {selectedPattern ? (
+            <ThemedView type="surfaceContainer" style={styles.selectedDiagramCard}>
+              <ThemedText type="smallBold">Selected pattern timeline</ThemedText>
+              <VibrationWaveDiagram sequenceMs={selectedPattern.sequenceMs} height={90} showAxis showSegmentLabels />
+            </ThemedView>
+          ) : null}
         </ScrollView>
 
         <View style={[styles.bottomBar, { backgroundColor: theme.background }]}>
@@ -431,12 +439,12 @@ const styles = StyleSheet.create({
   },
   patternText: {
     flex: 1,
+    gap: Spacing.one,
   },
   patternPress: {
     borderRadius: Spacing.three,
   },
   patternCard: {
-    borderWidth: 1,
     borderRadius: Spacing.three,
     padding: Spacing.three,
     flexDirection: 'row',
@@ -446,6 +454,11 @@ const styles = StyleSheet.create({
   },
   patternCheck: {
     marginLeft: 'auto',
+  },
+  selectedDiagramCard: {
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.one,
   },
   bottomBar: {
     position: 'absolute',
