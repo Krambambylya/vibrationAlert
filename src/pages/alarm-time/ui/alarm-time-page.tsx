@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { getAlarmSettings, saveAlarmSettings, type AlarmSettings } from '@/entities/alarm';
 import { getAllPatterns, type VibrationPattern } from '@/entities/vibration-pattern';
@@ -22,19 +23,24 @@ function clampTime(value: string, max: number) {
   return Math.min(Math.max(numeric, 0), max);
 }
 
+function pad2(value: number) {
+  return String(value).padStart(2, '0');
+}
+
 export function AlarmTimePage() {
   const [alarm, setAlarm] = useState<AlarmSettings | null>(null);
   const [patterns, setPatterns] = useState<VibrationPattern[]>([]);
   const [hourInput, setHourInput] = useState('07');
   const [minuteInput, setMinuteInput] = useState('00');
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       const [savedAlarm, loadedPatterns] = await Promise.all([getAlarmSettings(), getAllPatterns()]);
       setAlarm(savedAlarm);
       setPatterns(loadedPatterns);
-      setHourInput(String(savedAlarm.hour).padStart(2, '0'));
-      setMinuteInput(String(savedAlarm.minute).padStart(2, '0'));
+      setHourInput(pad2(savedAlarm.hour));
+      setMinuteInput(pad2(savedAlarm.minute));
     };
     load();
   }, []);
@@ -45,6 +51,25 @@ export function AlarmTimePage() {
     ({ id: 'preset-gentle', name: 'Gentle', sequenceMs: [200, 200, 200], isPreset: true } as VibrationPattern);
 
   const sortedPatterns = useMemo(() => [...patterns], [patterns]);
+
+  const timePickerValue = useMemo(() => {
+    const nextHour = clampTime(hourInput, 23);
+    const nextMinute = clampTime(minuteInput, 59);
+    const d = new Date();
+    d.setHours(nextHour, nextMinute, 0, 0);
+    return d;
+  }, [hourInput, minuteInput]);
+
+  const onTimePicked = (event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setTimePickerOpen(false);
+    }
+    if (event.type !== 'set' || !date) {
+      return;
+    }
+    setHourInput(pad2(date.getHours()));
+    setMinuteInput(pad2(date.getMinutes()));
+  };
 
   const onSave = async () => {
     if (!alarm || !selectedPattern) {
@@ -108,23 +133,39 @@ export function AlarmTimePage() {
           </View>
 
           <ThemedText type="small">Time (HH:mm)</ThemedText>
-          <View style={styles.timeRow}>
-            <TextInput
-              value={hourInput}
-              onChangeText={setHourInput}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={styles.timeInput}
+          {Platform.OS === 'web' ? (
+            <View style={styles.timeRow}>
+              <TextInput
+                value={hourInput}
+                onChangeText={setHourInput}
+                keyboardType="number-pad"
+                maxLength={2}
+                style={styles.timeInput}
+              />
+              <ThemedText type="subtitle">:</ThemedText>
+              <TextInput
+                value={minuteInput}
+                onChangeText={setMinuteInput}
+                keyboardType="number-pad"
+                maxLength={2}
+                style={styles.timeInput}
+              />
+            </View>
+          ) : (
+            <Pressable onPress={() => setTimePickerOpen(true)} style={styles.timePickerPressable}>
+              <ThemedText type="subtitle">{hourInput}:{minuteInput}</ThemedText>
+            </Pressable>
+          )}
+
+          {Platform.OS !== 'web' && timePickerOpen ? (
+            <DateTimePicker
+              value={timePickerValue}
+              mode="time"
+              is24Hour
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onTimePicked}
             />
-            <ThemedText type="subtitle">:</ThemedText>
-            <TextInput
-              value={minuteInput}
-              onChangeText={setMinuteInput}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={styles.timeInput}
-            />
-          </View>
+          ) : null}
         </ThemedView>
 
         <ThemedText type="smallBold">Pattern</ThemedText>
@@ -190,6 +231,14 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 24,
     textAlign: 'center',
+  },
+  timePickerPressable: {
+    borderWidth: 1,
+    borderColor: '#5f5f5f',
+    borderRadius: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    alignSelf: 'flex-start',
   },
   patternPress: {
     borderRadius: Spacing.three,
